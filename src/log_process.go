@@ -3,6 +3,7 @@ package main
 /*
 将复杂的任务拆分, 通过goroutine去并发执行
 通过channel做数据通信
+struct
 */
 import (
 	"time"
@@ -15,6 +16,9 @@ import (
 	"regexp"
 	"strconv"
 	"net/url"
+	"flag"
+
+	"github.com/influxdata/influxdb/client/v2"
 )
 
 // LogProcess ...
@@ -37,18 +41,18 @@ type Reader interface {
 	Read(rc chan []byte)
 }
 
-// Writer :write interface
+// Writer :write interface, 
 type Writer interface {
 	Write(wc chan *Message)
 	// Write(wc chan []byte)
 }
 
-// ReadFromFile :read file
+// ReadFromFile :read file path
 type ReadFromFile struct {
 	path string
 }
 
-// WriteToInfluxDB :store influxdb
+// WriteToInfluxDB :store data to influxdb
 type WriteToInfluxDB struct {
 	influxDBDsn string
 }
@@ -147,18 +151,89 @@ func (l *LogProcess) Process() {
 		message.RequestTime = requestTime
 
 		l.wc <- message
+		fmt.Println("Process data done")
 	}
 }
 
 func (w *WriteToInfluxDB) Write(wc chan *Message) {
+	// for v := range wc {
+	// 	fmt.Println(v)
+	// }
+	infSli := strings.Split(w.influxDBDsn, "@")
+	addr := infSli[0]
+	username := infSli[1]
+	password := infSli[2]
+	database := infSli[3]
+	precision := infSli[4]
+ 
+	// Create a new HTTPClient
+	c, err := client.NewHTTPClient(client.HTTPConfig{
+		Addr:     addr,
+		Username: username,
+		Password: password,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer c.Close()
+ 
 	for v := range wc {
-		fmt.Println(v)
+		// Create a new point batch
+		bp, err := client.NewBatchPoints(client.BatchPointsConfig{
+			Database:  database,
+			Precision: precision,
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+ 
+		// Create a point and add to batch
+		//Tags:Path,Method,Scheme,Status
+		tags := map[string]string{
+			"Path": v.Path,
+			"Method": v.Method,
+			"Scheme": v.Scheme,
+			"Status": v.Status,
+			}
+ 
+		fields := map[string]interface{}{
+			"UpstreamTime": v.UpstreamTime,
+			"RequestTime":  v.RequestTime,
+			"BytesSent":    v.BytesSent,
+		}
+ 
+		fmt.Println("taps:",tags)
+		fmt.Println("fields:",fields)
+ 
+		pt, err := client.NewPoint("nginx_log", tags, fields, v.Timelocal)
+		if err != nil {
+			log.Fatal(err)
+		}
+		bp.AddPoint(pt)
+ 
+		// Write the batch
+		if err := c.Write(bp); err != nil {
+			log.Fatal(err)
+		}
+ 
+		// Close client resources
+		if err := c.Close(); err != nil {
+			log.Fatal(err)
+		}
+ 
+		log.Println("write success")
 	}
 }
 
 func main() {
-	p := &ReadFromFile{"./access.log"}
-	w := &WriteToInfluxDB{influxDBDsn: "usernam@passwd"}
+	var path, influxDBDsn string
+	flag.StringVar(&path, "path", "./access.log", "write file")
+
+	flag.StringVar(&influxDBDsn, "influxDBDsn", "http://127.0.0.1:8086@root@admin@mydb@s", "influxdb data source")
+
+	flag.Parse()
+	p := &ReadFromFile{path: path}
+	w := &WriteToInfluxDB{influxDBDsn: influxDBDsn}
 	lp := &LogProcess{
 		rc: make(chan []byte),
 		wc: make(chan *Message),
