@@ -105,7 +105,7 @@ func (l *LogProcess) Process() {
 	// r := regexp.MustCompile(`([\d\.]+)\s+([^ \[]+)\s+([^ \[]+)\s+\[([^\]]+)\]\s+([a-z]+)\s+\"([^"]+)\"\s+(\d{3})\s+(\d+)\s+\"([^""]+)\"\s+.*`)
 	loc , _ := time.LoadLocation("Asia/Shanghai")
 	for v := range l.rc {
-		fmt.Println(string(v))
+		// fmt.Println(string(v))
 		ret := r.FindStringSubmatch(string(v))
 		// fmt.Println("ret", ret[0])
 		// byte conver to string
@@ -151,7 +151,6 @@ func (l *LogProcess) Process() {
 		message.RequestTime = requestTime
 
 		l.wc <- message
-		fmt.Println("Process data done")
 	}
 }
 
@@ -176,7 +175,9 @@ func (w *WriteToInfluxDB) Write(wc chan *Message) {
 		log.Fatal(err)
 	}
 	defer c.Close()
- 
+	
+	fmt.Println("wc length:", len(wc))
+
 	for v := range wc {
 		// Create a new point batch
 		bp, err := client.NewBatchPoints(client.BatchPointsConfig{
@@ -185,6 +186,7 @@ func (w *WriteToInfluxDB) Write(wc chan *Message) {
 		})
 		if err != nil {
 			log.Fatal(err)
+			continue
 		}
  
 		// Create a point and add to batch
@@ -205,20 +207,23 @@ func (w *WriteToInfluxDB) Write(wc chan *Message) {
 		fmt.Println("taps:",tags)
 		fmt.Println("fields:",fields)
  
-		pt, err := client.NewPoint("nginx_log", tags, fields, v.Timelocal)
+		pt, err := client.NewPoint("log_access", tags, fields, v.Timelocal)
 		if err != nil {
 			log.Fatal(err)
+			continue
 		}
 		bp.AddPoint(pt)
  
 		// Write the batch
 		if err := c.Write(bp); err != nil {
 			log.Fatal(err)
+			continue
 		}
  
 		// Close client resources
 		if err := c.Close(); err != nil {
 			log.Fatal(err)
+			continue
 		}
  
 		log.Println("write success")
@@ -229,22 +234,26 @@ func main() {
 	var path, influxDBDsn string
 	flag.StringVar(&path, "path", "./access.log", "write file")
 
-	flag.StringVar(&influxDBDsn, "influxDBDsn", "http://127.0.0.1:8086@root@admin@mydb@s", "influxdb data source")
+	flag.StringVar(&influxDBDsn, "influxDBDsn", "http://192.168.212.133:8086@root@tester@mydb@s", "influxdb data source")
 
 	flag.Parse()
 	p := &ReadFromFile{path: path}
 	w := &WriteToInfluxDB{influxDBDsn: influxDBDsn}
 	lp := &LogProcess{
-		rc: make(chan []byte),
-		wc: make(chan *Message),
+		rc: make(chan []byte, 300),
+		wc: make(chan *Message, 300),
 		// wc: make(chan []byte),
 		reader: p,
 		writer: w,
 	}
 
 	go lp.reader.Read(lp.rc)
-	go lp.Process()
-	go lp.writer.Write(lp.wc)
+	for v := 0; v <=2; v++ {
+		go lp.Process()
+	}
+	for v := 0; v <=4; v++ {
+		go lp.writer.Write(lp.wc)
+	}
 
 	time.Sleep(20 * time.Second)
 }
