@@ -19,14 +19,17 @@ import (
 	"net/http"
 )
 
+// 定义全局常量
 const (
 	TypeHandleLine  = 0
 	TypeErrNum      = 1
 	TpsIntervalTime = 5
 )
 
+// TypeMonitorChan :TypeMonitorChan
 var TypeMonitorChan = make(chan int, 200)
 
+// Message :Message
 type Message struct {
 	TimeLocal                    time.Time
 	BytesSent                    int
@@ -34,7 +37,7 @@ type Message struct {
 	UpstreamTime, RequestTime    float64
 }
 
-//系统状态监控
+//SystemInfo :系统状态监控
 type SystemInfo struct {
 	HandleLine    int     `json:"handleLine"`   //总处理日志行数
 	Tps           float64 `json:"tps"`          //系统吞吐量
@@ -44,6 +47,7 @@ type SystemInfo struct {
 	ErrNum        int     `json:"errNum"`       //错误数
 }
 
+// Monitor ...
 /*
 $ curl 127.0.0.1:9193/monitor
   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
@@ -64,23 +68,24 @@ type Monitor struct {
 }
 
 func (m *Monitor) start(lp *LogProcess) {
-
+	// judge type in chan
 	go func() {
 		for n := range TypeMonitorChan {
 			switch n {
 			case TypeErrNum:
-				m.data.ErrNum += 1
+				m.data.ErrNum++
 
 			case TypeHandleLine:
-				m.data.HandleLine += 1
+				m.data.HandleLine++
 			}
 		}
 	}()
 
+	// 定时器: ticker
 	ticker := time.NewTicker(time.Second * TpsIntervalTime)
 	go func() {
 		for {
-			<-ticker.C
+			<-ticker.C // 每5s, 执行一次
 			m.tpsSli = append(m.tpsSli, m.data.HandleLine)
 			if len(m.tpsSli) > 2 {
 				m.tpsSli = m.tpsSli[1:]
@@ -89,27 +94,32 @@ func (m *Monitor) start(lp *LogProcess) {
 		}
 	}()
 
+	// access web API by route
 	http.HandleFunc("/monitor", func(writer http.ResponseWriter, request *http.Request) {
 		m.data.RunTime = time.Now().Sub(m.startTime).String()
 		m.data.ReadChanLen = len(lp.rc)
 		m.data.WriterChanLen = len(lp.wc)
 		m.data.Tps = m.tps
 
+		// view json information online
 		ret, _ := json.MarshalIndent(m.data, "", "\t")
 		io.WriteString(writer, string(ret))
 	})
-
+	// listen port
 	http.ListenAndServe(":9193", nil)
 }
 
+// Reader :Reader
 type Reader interface {
 	Read(rc chan []byte)
 }
 
+// Writer :Writer
 type Writer interface {
 	Writer(wc chan *Message)
 }
 
+// LogProcess :LogProcess
 type LogProcess struct {
 	rc    chan []byte
 	wc    chan *Message
@@ -117,11 +127,12 @@ type LogProcess struct {
 	write Writer
 }
 
+// ReadFromFile :struct+interface, 实现多态
 type ReadFromFile struct {
 	path string //读取文件的路径
 }
 
-//读取模块
+//Read :读取模块
 func (r *ReadFromFile) Read(rc chan []byte) {
 
 	//打开文件
@@ -131,14 +142,14 @@ func (r *ReadFromFile) Read(rc chan []byte) {
 		panic(fmt.Sprintf("open file  err :", err.Error()))
 	}
 
-	//从文件末尾开始逐行读取文件内容
-	f.Seek(0, 2) //2,代表将指正移动到末尾
+	// 从文件末尾开始逐行读取文件内容
+	f.Seek(0, 2) // 2,代表将指正移动到末尾
 
 	rd := bufio.NewReader(f)
 
 	for {
-		line, err := rd.ReadBytes('\n') //连续读取内容知道需要'\n'结束
-		if err == io.EOF {
+		line, err := rd.ReadBytes('\n') // 连续读取内容直到'\n'结束
+		if err == io.EOF {              // when no more input is available
 			time.Sleep(5000 * time.Microsecond)
 			continue
 		} else if err != nil {
@@ -151,11 +162,71 @@ func (r *ReadFromFile) Read(rc chan []byte) {
 
 }
 
+//Process :process read message, and write other channel
+func (l *LogProcess) Process() {
+
+	/*
+		172.0.012 - - [04/Mar/2018:13:49:52 +0000] http "GET /foo?query=t HTTP/1.0" 200 2133 "-" "KeepAliveClient" "-" 1.005 1.854
+
+		([\d\.]+)\s+([^ \[]+)\s+([^ \[]+)\s+\[([^\]]+)\]\s+([a-z]+)\s+\"([^"]+)\"\s+(\d{3})\s+(\d+)\s+\"([^"]+)\"\s+\"(.*?)\"\s+\"([\d\.-]+)\"\s+([\d\.-]+)\s+([\d\.-]+)
+	*/
+	r := regexp.MustCompile(`([\d\.]+)\s+([^ \[]+)\s+([^ \[]+)\s+\[([^\]]+)\]\s+([a-z]+)\s+\"([^"]+)\"\s+(\d{3})\s+(\d+)\s+\"([^"]+)\"\s+\"(.*?)\"\s+\"([\d\.-]+)\"\s+([\d\.-]+)\s+([\d\.-]+)`)
+	for v := range l.rc {
+		ret := r.FindStringSubmatch(string(v))
+		if len(ret) != 14 {
+			TypeMonitorChan <- TypeErrNum
+			fmt.Println("FindStringSubmatch fail:", string(v))
+			fmt.Println(len(ret))
+			continue
+		}
+		message := &Message{}
+		//时间: [04/Mar/2018:13:49:52 +0000]
+		loc, _ := time.LoadLocation("Asia/Shanghai")
+		t, err := time.ParseInLocation("02/Jan/2006:15:04:05 +0000", ret[4], loc)
+		if err != nil {
+			TypeMonitorChan <- TypeErrNum
+			fmt.Println("ParseInLocation fail:", err.Error(), ret[4])
+		}
+		message.TimeLocal = t
+		//字符串长度: 2133
+		byteSent, _ := strconv.Atoi(ret[8])
+		message.BytesSent = byteSent
+		//"GET /foo?query=t HTTP/1.0"
+		reqSli := strings.Split(ret[6], " ")
+		if len(reqSli) != 3 {
+			TypeMonitorChan <- TypeErrNum
+			fmt.Println("strings.Split fail:", ret[6])
+			continue
+		}
+		message.Method = reqSli[0]
+		u, err := url.Parse(reqSli[1])
+		if err != nil {
+			TypeMonitorChan <- TypeErrNum
+			fmt.Println("url parse fail:", err)
+			continue
+		}
+		message.Path = u.Path
+		//http
+		message.Scheme = ret[5]
+		//code: 200
+		message.Status = ret[7]
+		//1.005
+		upstreamTime, _ := strconv.ParseFloat(ret[12], 64)
+		message.UpstreamTime = upstreamTime
+		//1.854
+		requestTime, _ := strconv.ParseFloat(ret[13], 64)
+		message.RequestTime = requestTime
+		//fmt.Println(message)
+		l.wc <- message
+	}
+}
+
+// WriteToinfluxDB :Write module
 type WriteToinfluxDB struct {
 	influxDBDsn string //influx data source
 }
 
-//写入模块
+//Writer ...
 /**
     1.初始化influxdb client
 	2. 从Write Channel中读取监控数据
@@ -230,74 +301,16 @@ func (w *WriteToinfluxDB) Writer(wc chan *Message) {
 
 }
 
-//解析模块
-func (l *LogProcess) Process() {
-
-	/**
-	172.0.012 - - [04/Mar/2018:13:49:52 +0000] http "GET /foo?query=t HTTP/1.0" 200 2133 "-"
-	"KeepAliveClient" "-" 1.005 1.854
-
-	([\d\.]+)\s+([^ \[]+)\s+([^ \[]+)\s+\[([^\]]+)\]\s+([a-z]+)\s+\"([^"]+)\"\s+(\d{3})\s+(\d+)\s+\"([^"]+)\"\s+\"(.*?)\"\s+\"([\d\.-]+)\"\s+([\d\.-]+)\s+([\d\.-]+)
-	*/
-	r := regexp.MustCompile(`([\d\.]+)\s+([^ \[]+)\s+([^ \[]+)\s+\[([^\]]+)\]\s+([a-z]+)\s+\"([^"]+)\"\s+(\d{3})\s+(\d+)\s+\"([^"]+)\"\s+\"(.*?)\"\s+\"([\d\.-]+)\"\s+([\d\.-]+)\s+([\d\.-]+)`)
-	for v := range l.rc {
-		ret := r.FindStringSubmatch(string(v))
-		if len(ret) != 14 {
-			TypeMonitorChan <- TypeErrNum
-			fmt.Println("FindStringSubmatch fail:", string(v))
-			fmt.Println(len(ret))
-			continue
-		}
-		message := &Message{}
-		//时间: [04/Mar/2018:13:49:52 +0000]
-		loc, _ := time.LoadLocation("Asia/Shanghai")
-		t, err := time.ParseInLocation("02/Jan/2006:15:04:05 +0000", ret[4], loc)
-		if err != nil {
-			TypeMonitorChan <- TypeErrNum
-			fmt.Println("ParseInLocation fail:", err.Error(), ret[4])
-		}
-		message.TimeLocal = t
-		//字符串长度: 2133
-		byteSent, _ := strconv.Atoi(ret[8])
-		message.BytesSent = byteSent
-		//"GET /foo?query=t HTTP/1.0"
-		reqSli := strings.Split(ret[6], " ")
-		if len(reqSli) != 3 {
-			TypeMonitorChan <- TypeErrNum
-			fmt.Println("strings.Split fail:", ret[6])
-			continue
-		}
-		message.Method = reqSli[0]
-		u, err := url.Parse(reqSli[1])
-		if err != nil {
-			TypeMonitorChan <- TypeErrNum
-			fmt.Println("url parse fail:", err)
-			continue
-		}
-		message.Path = u.Path
-		//http
-		message.Scheme = ret[5]
-		//code: 200
-		message.Status = ret[7]
-		//1.005
-		upstreamTime, _ := strconv.ParseFloat(ret[12], 64)
-		message.UpstreamTime = upstreamTime
-		//1.854
-		requestTime, _ := strconv.ParseFloat(ret[13], 64)
-		message.RequestTime = requestTime
-		//fmt.Println(message)
-		l.wc <- message
-	}
-}
-
-/**
+/*
 分析监控需求:
-	某个协议下的某个请求在某个请求方法的 QPS&响应时间&流量
+	某个协议下的某个请求在某个请求方法的 TPS&响应时间&流量
 */
 func main() {
 	var path, influDsn string
 	flag.StringVar(&path, "path", "./access.log", "read file path")
 	flag.StringVar(&influDsn, "influxDsn", "http://127.0.0.1:8086@root@tester@mydb@s", "influx data source")
+	flag.StringVar(&proNum, "proNum", 2, "go route process number")
+	flag.StringVar(&writeNum, "writeNum", 4, "go route writer Number")
 	flag.Parse()
 	r := &ReadFromFile{
 		path: path,
@@ -312,10 +325,10 @@ func main() {
 		write: w,
 	}
 	go lp.read.Read(lp.rc)
-	for i := 1; i < 2; i++ {
+	for i := 1; i < proNum; i++ {
 		go lp.Process()
 	}
-	for i := 1; i < 4; i++ {
+	for i := 1; i < writeNum; i++ {
 		go lp.write.Writer(lp.wc)
 	}
 	fmt.Println("begin !!!")
