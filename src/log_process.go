@@ -57,7 +57,7 @@ $ curl 127.0.0.1:9193/monitor
         "tps": 315.4,
         "readChanLen": 200,
         "writeChanLen": 0,
-        "ruanTime": "31.0062396s",
+        "runTime": "31.0062396s",
 
 */
 type Monitor struct {
@@ -119,7 +119,7 @@ type Writer interface {
 	Writer(wc chan *Message)
 }
 
-// LogProcess :LogProcess
+// LogProcess :main中, LogProcess实例化之后无法直接调用结构体reader的Read方法, 需要通过嵌入的方式, 实现调用
 type LogProcess struct {
 	rc    chan []byte
 	wc    chan *Message
@@ -157,7 +157,7 @@ func (r *ReadFromFile) Read(rc chan []byte) {
 		}
 
 		TypeMonitorChan <- TypeHandleLine
-		rc <- line[:len(line)-1]
+		rc <- line[:len(line)-1] // remove "\n"
 	}
 
 }
