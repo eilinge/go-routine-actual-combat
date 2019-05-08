@@ -1,0 +1,178 @@
+//例子48 - 无缓冲区channel使用
+package main
+
+import (
+	"fmt"
+	"os"
+	"runtime"
+	"time"
+)
+
+// //发送数字-c为int型管道
+func sendNum(c chan int) {
+	fmt.Println("begin call sendNum....")
+	c <- 7 //向管道内写入7
+	fmt.Println("end call sendNum....")
+}
+
+func main01() {
+	//创建一个管道 - 无缓冲区
+	c := make(chan int)
+	go sendNum(c) // 启动协程
+	//为了防止忘记关闭-使用defer
+	defer close(c)
+	time.Sleep(time.Second * 3) //睡眠3s，为了验证写端是否阻塞
+	num := <-c                  //从管道读数据
+	fmt.Println("num = ", num)
+	runtime.Gosched() //不加很难保证另外的协程彻底结束
+}
+
+func main02() {
+	chan1 := make(chan int)
+	chan2 := make(chan int)
+
+	go func() {
+		for i := 0; i < 10; i++ {
+			chan1 <- i
+			time.Sleep(time.Second * 1)
+		}
+		close(chan1)
+	}()
+	go func() {
+		for j := range chan1 {
+			chan2 <- j * j
+		}
+		close(chan2)
+	}()
+
+	// go func() {
+	// 	for j := range chan2 {
+	// 		fmt.Println("j = ", j)
+	// 	}
+	// }()
+	// time.Sleep(time.Second * 3)
+
+	// blocking
+	for {
+		num, ok := <-chan2
+		if !ok {
+			break
+		}
+		fmt.Println(num)
+	}
+}
+
+//couter recieve chan only
+func couter(out chan<- int) {
+	defer close(out)
+	for i := 0; i < 10; i++ {
+		out <- i
+		// time.Sleep(time.Second * 1)
+	}
+}
+
+//squarer send chan only
+func squarer(in <-chan int, out chan<- int) {
+	defer close(out)
+	for j := range in {
+		out <- j * j
+	}
+}
+
+//printer recieve chan only
+func printer(in <-chan int) {
+	// defer close(in) // cannot close receive-only channel)
+	for {
+		num, ok := <-in
+		if !ok {
+			break
+		}
+		fmt.Println(num)
+	}
+}
+
+func main03() {
+	chan1 := make(chan int)
+	chan2 := make(chan int)
+
+	go couter(chan1)
+
+	go squarer(chan1, chan2)
+
+	// 试图重复关闭一个channel将导致panic异常，试图关闭一个nil值的channel也将导致panic异常
+	printer(chan2)
+}
+
+func launch() {
+	fmt.Println("launch!")
+}
+
+func main04() {
+	tk := time.NewTicker(time.Second * 1)
+	var index = 5
+	for {
+		t1 := <-tk.C
+		index--
+		fmt.Println("t1, index", t1, index) // 2019-05-08 14:41:46.8607406 +0800 CST m=+1.001399101 4
+		if index <= 0 {
+			break
+		}
+	}
+	launch()
+
+	var y = 2
+	var x int
+	c := make(chan int)
+	quit := make(chan int)
+	// send or recieve data from channel must in goroutinue
+	// for i := 0; i < 4; i++ {
+	// 	quit <- y
+	// 	fmt.Println("put y to chan quit")
+	// }
+	go func() {
+		for i := 0; i < 4; i++ {
+			quit <- y
+			fmt.Println("put y to chan quit")
+		}
+	}()
+
+	// go func() {
+	// 	for i := 0; i < 4; i++ {
+	// 		d := <-quit
+	// 		fmt.Println("d ", d)
+	// 	}
+	// }()
+	for {
+		select {
+		case c <- x:
+			x, y = y, x+y
+		case <-quit:
+			fmt.Println("quit")
+			return
+			// default:
+			// 	fmt.Println("no data")
+		}
+	}
+}
+
+func main() {
+	abort := make(chan string)
+	go func() {
+		buf := make([]byte, 1)
+		os.Stdin.Read(buf) // detect whether have input
+		abort <- "cancel"
+	}()
+	tk := time.NewTicker(time.Second * 1)
+	// var t time.Time
+	for i := 5; i > 0; i-- {
+		fmt.Printf("%v seconds will send\n", i)
+		select {
+		case <-tk.C:
+		case <-abort:
+			fmt.Println("cancel")
+			return
+		}
+	}
+	launch()
+	time.Sleep(time.Second * 5)
+}

@@ -1,0 +1,35 @@
+package main
+
+import "fmt"
+
+func main() {
+	a := 10
+	vFoo(a)
+	// 值传递: 是指在调用函数时将实际参数复制一份传递到函数中，这样在函数中如果对参数进行修改，将不会影响到实际参数。
+	fmt.Printf("a of value: %#v\n", a) // a of value: 10
+	fmt.Printf("a of addr: %#v\n", &a) // a of addr: (*int)(0xc00005e058)
+
+	pa := &a
+	vFooQuote(pa)
+	// 指针传递: 形参为指向实参地址的指针，当对形参的指向操作时，就相当于对实参本身进行的操作。
+	// pa 与 p 的地址各自互不相关，说明在参数传递中发生了值拷贝。
+	fmt.Printf("pa of value: %#v\n", pa) // value: (*int)(0xc00005e058)
+	fmt.Printf("pa of addr: %#v\n", &pa) // addr: (**int)(0xc000086018)
+}
+
+func vFoo(b int) {
+	b = 11
+	fmt.Printf("b of value: %#v\n", b) // b of value: 11
+	fmt.Printf("b of addr: %#v\n", &b) // b of addr: (*int)(0xc00005e070)
+}
+
+func vFooQuote(p *int) {
+	fmt.Printf("p of value: %#v\n", p) // value: (*int)(0xc00005e058)
+	fmt.Printf("p of addr: %#v\n", &p) // addr: (**int)(0xc000086028)
+}
+
+// 引用传递: 是指在调用函数时将实际参数的地址(&i)传递到函数中，那么在函数中对参数所进行的修改，将影响到实际参数
+
+// Go 中函数传参仅有值传递一种方式;
+// slice、map、channel都是引用类型，但是跟c++的不同;
+// slice能够通过函数传参后，修改对应的数组值，是因为 slice 内部保存了引用数组的指针，并不是因为引用传递。
