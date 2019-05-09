@@ -188,7 +188,161 @@ func test(a int) {
 	// a value: 4
 	// this func called end
 }
-func main() {
+func main05() {
 	test(4)
 	fmt.Println("this func called end")
+}
+
+// 面向过程
+func Add01(a, b int) (c int) {
+	c = a + b
+	return
+}
+
+type long int
+
+// 面向对象, 方法:给某个类型绑定一个函数
+// p 为接受者(receiver), 接受者就是传递的一个参数
+func (p long) Add02(a long) long {
+	return p + a
+}
+
+func main06() {
+	r := Add01(1, 2)
+	fmt.Println("r = ", r)
+
+	var s long = 3
+	v := s.Add02(3)
+	fmt.Println("v = ", v)
+}
+
+type Person struct {
+	name string
+	sex  byte
+	age  int
+}
+
+func (p Person) SetInfoValue() {
+	p.name = "eilinge"
+	fmt.Printf("SetInfoValue: %p, %v \n", &p, p)
+}
+
+func (p *Person) SetInfoPointer() {
+	p.name = "eilinge"
+	fmt.Printf("SetInfoValue: %p, %v \n", p, p)
+}
+
+func main07() {
+	p := Person{"mike", 'm', 17}
+	fmt.Printf("main: %p, %v\n", &p, p) // main: 0xc000004460, {mike 109 17}
+
+	// 引用传递: 传指针, 地址相同, 外部修改则原值也变
+	// 值传递: 拷贝值, 地址不同, 外部修改则原值不变
+	f := (*Person).SetInfoPointer
+	f(&p) // SetInfoValue: 0xc000004460, &{eilinge 109 17}
+	fmt.Printf("main: %p, %v\n", &p, p)
+
+	g := (Person).SetInfoValue
+	g(p) // SetInfoValue: 0xc000004500, {eilinge 109 17}
+	fmt.Printf("main: %p, %v\n", &p, p)
+}
+
+// 接口(interface): 一个自定义类型, 接口类型具体描述了一系列方法的集合
+// 接口类型是一种抽象的类型, 她不会暴露出它所代表的对象的内部值的结构和这个对象支持的基础操作的集合
+// 他们只会展示出它们自己的方法。因此接口类型不能将其他实例化
+
+// Go通过接口实现了鸭子类型(duck-typing): "当看见一只鸟走起来想鸭子, 游泳起来想鸭子, 叫起来也像鸭子, 那么这个鸟就可以被称为鸭子".
+// 我们并不关心对象是什么类型, 到底是不是鸭子, 只关心行为
+
+type Humaner interface {
+	SayHi()
+}
+
+// 接口命名习惯以er结尾
+// 只有方法声明, 没有实现, 没有数据字段
+// 接口可以匿名嵌入其它接口, 或嵌入到结构中
+
+type MyStr string
+
+func (tmp *MyStr) SayHi() {
+	fmt.Printf("MyStr[%s]\n", *tmp)
+}
+
+func WhoSayHi(i Humaner) {
+	i.SayHi()
+}
+
+func main08() {
+	// var i Humaner
+
+	// 只要实现了此接口全部方法的类型, 那么这个类型的变量(接收者类型)就可以给i赋值
+	// 然后可以直接调用接口的方法, Go自动识别出接收者类型
+	s := Student{"mike", 666}
+	// i = &s
+	// i.SayHi() // Student[mike, 666]
+
+	t := Teacher{"sh", "go"}
+	// i = &t
+	// i.SayHi() // Teacher[sh, go]
+
+	var m MyStr = "eilinge"
+	// i = &m
+	// i.SayHi() // MyStr[eilinge]
+
+	// 调用同一函数, 不同表现(Student, Teacher, MyStr), 多态, 多种形态
+	WhoSayHi(&s) // Student[mike, 666]
+	WhoSayHi(&t) // Teacher[sh, go]
+	WhoSayHi(&m) // MyStr[eilinge]
+
+	i := make([]Humaner, 3)
+	i[0] = &s
+	i[1] = &t
+	i[2] = &m
+
+	for _, j := range i {
+		j.SayHi()
+		// Student[mike, 666]
+		// Teacher[sh, go]
+		// MyStr[eilinge]
+	}
+
+}
+
+// 接口的嵌入(继承): 实现了超集的所有接口方法, 则可以赋值给interface, Go自动判断其接受者类型
+type Singer interface {
+	Humaner          // 子集
+	Sing(str string) // 超集
+}
+
+type Student struct {
+	name string
+	id   int
+}
+
+type Teacher struct {
+	addr  string
+	group string
+}
+
+func (tmp *Teacher) SayHi() {
+	fmt.Printf("Student[%s, %s]\n", tmp.addr, tmp.group)
+}
+
+func (tmp *Student) SayHi() {
+	fmt.Printf("Student[%s, %d]\n", tmp.name, tmp.id)
+}
+
+func (tmp *Student) Sing(str string) {
+	fmt.Println("Student Singing a song:", str)
+}
+
+func main() {
+	var i Singer
+	s := &Student{"eilinge", 17}
+	i = s
+	i.SayHi()           // Student[eilinge, 17]
+	i.Sing("good lady") // Student Singing a song: good lady
+
+	// t := &Teacher{"sh", "go"}
+	// i = t // *Teacher does not implement Singer (missing Sing method)
 }
