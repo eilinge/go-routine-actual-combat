@@ -1,0 +1,69 @@
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+
+	"github.com/pipeline"
+)
+
+func main01() {
+	p1 := pipeline.InMemSort(pipeline.ArraySource(2, 3, 6, 4, 5))
+	p2 := pipeline.InMemSort(pipeline.ArraySource(1, 8, 2, 4, 5, 13, 11))
+	p := pipeline.Merge(p1, p2)
+	// for {
+	// 	if v, ok := <-p; ok {
+	// 		fmt.Println(v)
+	// 	} else {
+	// 		break
+	// 	}
+	// }
+
+	// 当chan中没有数据的时候, 会继续等待, 直到chan关闭
+	for v := range p {
+		fmt.Println(v)
+	}
+}
+
+const (
+	filename = "larg.in"
+	count    = 50000000 // filesize: count * 8(buffer := make([]byte, 8)); 100 0000=1M
+)
+
+func main() {
+	file, err := os.Create(filename)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+
+	p := pipeline.RandomSource(count)
+	// 	多次进行小量的写操作会影响程序性能。每一次写操作最终都会体现为系统层调用，频繁进行该操作将有可能对 CPU 造成伤害。而且很多硬件设备更适合处理块对齐的数据，例如硬盘。
+	// 为了减少进行多次写操作所需的开支，golang 提供了 bufio.Writer。
+	// 数据将不再直接写入目的地(实现了 io.Writer 接口)，而是先写入缓存，当缓存写满后再统一写入目的地：
+
+	// producer --> buffer --> io.Writer
+	writer := bufio.NewWriter(file) // bufio: 增加文件的读写速度
+	pipeline.WriteSink(writer, p)
+	writer.Flush() //清除buffer中的数据
+
+	file, err = os.Open(filename)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+	// 通过它，我们可以从底层的 io.Reader 中更大批量的读取数据。这会使读取操作变少。如果数据读取时的块数量是固定合适的，
+	// 底层媒体设备将会有更好的表现，也因此会提高程序的性能：
+	// io.Reader --> buffer --> consumer
+	p = pipeline.ReadSource(bufio.NewReader(file))
+	count := 0
+	for i := range p {
+		fmt.Println(i)
+		count++
+		if count >= 20 {
+			break
+		}
+	}
+
+}
