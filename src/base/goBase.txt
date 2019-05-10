@@ -1,6 +1,11 @@
 package main
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+)
 
 const (
 	a       = iota
@@ -8,6 +13,7 @@ const (
 	m       = iota
 )
 
+// base type
 func main01() {
 	fmt.Printf("a type is: %T\n", a)
 	fmt.Printf("a = %d, i = %d, j = %d, k = %d, m = %d\n", a, i, j, k, m) // a = 0, i = 1, j = 1, k = 1, m = 2
@@ -78,6 +84,7 @@ func main01() {
 	fmt.Println("t = ", t)
 }
 
+// switch
 func main02() {
 	// var num int
 	// fmt.Printf("请按下楼层: ")
@@ -127,6 +134,7 @@ func main02() {
 	}
 }
 
+// break continue
 func main03() {
 	str := "abcefg"
 	for i := 0; i < len(str); i++ {
@@ -160,6 +168,7 @@ func main03() {
 	// }
 }
 
+// 标签
 func main04() {
 	// break // break is not in a loop, switch, or select
 	// continue // continue is not in a loop
@@ -232,6 +241,7 @@ func (p *Person) SetInfoPointer() {
 	fmt.Printf("SetInfoValue: %p, %v \n", p, p)
 }
 
+// 结构体: 值引用, 指针引用
 func main07() {
 	p := Person{"mike", 'm', 17}
 	fmt.Printf("main: %p, %v\n", &p, p) // main: 0xc000004460, {mike 109 17}
@@ -272,6 +282,7 @@ func WhoSayHi(i Humaner) {
 	i.SayHi()
 }
 
+// 接口多态
 func main08() {
 	// var i Humaner
 
@@ -336,13 +347,141 @@ func (tmp *Student) Sing(str string) {
 	fmt.Println("Student Singing a song:", str)
 }
 
-func main() {
-	var i Singer
+// 接口嵌入
+func main09() {
+	var iPro Singer
+	var i Humaner
+	i = iPro // 超集无法转换成子集
+	// iPro = i // 子集无法转换成超集
+	fmt.Printf("%#v \n", i)
 	s := &Student{"eilinge", 17}
-	i = s
-	i.SayHi()           // Student[eilinge, 17]
-	i.Sing("good lady") // Student Singing a song: good lady
+	iPro = s
+	iPro.SayHi()           // Student[eilinge, 17]
+	iPro.Sing("good lady") // Student Singing a song: good lady
 
+	// 接口的嵌入(继承): 实现了超集的所有接口方法, 则可以赋值给interface, Go自动判断其接受者类型
 	// t := &Teacher{"sh", "go"}
 	// i = t // *Teacher does not implement Singer (missing Sing method)
+}
+
+// data type
+func main10() {
+	i := make([]interface{}, 3)
+	i[0] = 1
+	i[1] = "hello world"
+	i[2] = Student{"eilinge", 17}
+
+	// 判断类型: if value, ok := data.(int); ok == true {}
+	// for index, data := range i {
+	// 	if value, ok := data.(int); ok == true {
+	// 		fmt.Printf("i[%d] 类型为int, 内容为%d\n", index, value)
+	// 	} else if value, ok := data.(string); ok == true {
+	// 		fmt.Printf("i[%d] 类型为string, 内容为%s\n", index, value)
+	// 	} else if value, ok := data.(Student); ok == true {
+	// 		fmt.Printf("i[%d] 类型为Student, 内容为%s, %d\n", index, value.name, value.id)
+	// 	}
+	// }
+
+	for index, data := range i {
+		switch value := data.(type) {
+		case int:
+			fmt.Printf("i[%d] 类型为int, 内容为%d\n", index, value)
+		case string:
+			fmt.Printf("i[%d] 类型为string, 内容为%s\n", index, value)
+		case Student:
+			fmt.Printf("i[%d] 类型为Student, 内容为%s, %d\n", index, value.name, value.id)
+		}
+	}
+}
+
+func myError(a, b int) (c int, err error) {
+	err = nil
+	defer func() {
+		if err1 := recover(); err1 != nil {
+			fmt.Println(err1)
+		}
+	}()
+	if b == 0 {
+		err = errors.New("b must isnot 0")
+	} else {
+		c = a / b
+	}
+	return
+}
+
+// error
+func main11() {
+	// err1 := fmt.Errorf("%s", "This is normol err1")
+	// fmt.Println(err1)
+
+	// err2 := errors.New("This is normol err2")
+	// fmt.Println(err2)
+
+	a, err := myError(12, 0)
+	if err != nil {
+		// 程序终止, 并打印报错信息
+		panic(err) // panic: b must isnot 0
+	}
+	fmt.Println("a = ", a)
+}
+
+// strings 操作字符串
+func main12() {
+	buffer := "hello mylove, lin"
+	// Contains 判断是否包含
+	fmt.Println(strings.Contains(buffer, "lin"))   // true
+	fmt.Println(strings.Contains(buffer, "eilin")) // false
+
+	// Join 切片拼接
+	buffer1 := []string{"hello", "mylove"}
+	fmt.Println(strings.Join(buffer1, "duzi")) // helloduzimylove
+
+	// Index 返回索引
+	fmt.Println(strings.Index(buffer, "lin"))   // 14
+	fmt.Println(strings.Index(buffer, "eilin")) // -1
+
+	// Repeat 重复
+	fmt.Println(strings.Repeat("buffer", 3)) // bufferbufferbuffer
+
+	// Split 分割
+	fmt.Println(strings.Split(buffer, ",")) // [hello mylove  lin]
+
+	// Trim 去掉2头的字符串
+	buf := strings.Trim("  #duzi, my love!#  ", " ")
+	fmt.Println("buf = ", buf) // #duzi, my love!#
+
+	// Fields 去掉2头的空格
+	buff := strings.Fields("  #duzi, my love!#  ")
+	fmt.Println("buff = ", buff) // [#duzi, my love!#]
+}
+
+func main() {
+	slice := make([]byte, 0, 1024)
+	slice = strconv.AppendBool(slice, true)
+
+	// 10 表示10进制
+	slice = strconv.AppendInt(slice, 1233, 10)
+	slice = strconv.AppendQuote(slice, "my love")
+
+	fmt.Println("slice = ", string(slice)) // true1233"my love"
+
+	// other type convert string
+	var str string
+	str = strconv.FormatBool(false)
+	fmt.Println("str = ", str) // str =  false
+	// 'f': 打印格式, 以小数方式; -1: 指小数点位数(紧缩模式); 64: float64
+	str = strconv.FormatFloat(3.14, 'f', -1, 64)
+	fmt.Println("str = ", str) // str =  3.14
+	// int convert string
+	str = strconv.Itoa(666)
+	fmt.Println("str = ", str) // str =  666
+
+	// string convert other type
+	var b bool
+	var err error
+	b, err = strconv.ParseBool("true")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("b = ", b) // b =  true
 }

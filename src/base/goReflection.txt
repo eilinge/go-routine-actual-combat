@@ -41,7 +41,7 @@ func info(o interface{}) {
 		return
 	}
 	v := reflect.ValueOf(o)
-	fmt.Println("Fields:")
+	fmt.Println("Fields:", v)
 
 	// 反射出类型的字段
 	for i := 0; i < t.NumField(); i++ {
