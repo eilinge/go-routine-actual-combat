@@ -1,0 +1,55 @@
+package main
+
+import (
+	"fmt"
+	"io"
+	"os"
+)
+
+func main01() {
+	os.Stdout.Close() // 关闭标准输出设备, 无法显示
+	fmt.Println("are u ok?")
+
+	// os.Stdin.Close()
+	fmt.Println("please input a int: ")
+	var tmp string
+	fmt.Scan(&tmp) // 关闭标准输入设备, 无法输入
+	fmt.Println("are you ok?")
+}
+
+func main() {
+	list := os.Args
+	if len(list) != 3 {
+		fmt.Printf("useage: %v srcfile dstfile\n", list)
+		return
+	}
+	// list[0] 该执行文件
+	srcfile := list[1]
+	dstfile := list[2]
+
+	if srcfile == dstfile {
+		fmt.Println("dstfile cannot as same as srcfile")
+		return
+	}
+
+	sf, _ := os.Open(srcfile)
+	df, _ := os.Create(dstfile)
+
+	defer sf.Close()
+	defer df.Close()
+
+	buf := make([]byte, 4*1024)
+	for {
+		n, err := sf.Read(buf)
+		// sf.ReadAt() // 指定位置读取
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			fmt.Println("err = ", err)
+		}
+		df.Write(buf[:n])
+		// df.WriteAt() // 指定位置写入
+		// df.WriteString() // 只能写入字符串
+	}
+}

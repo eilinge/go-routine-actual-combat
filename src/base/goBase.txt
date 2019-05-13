@@ -320,9 +320,9 @@ func main08() {
 }
 
 // 接口的嵌入(继承): 实现了超集的所有接口方法, 则可以赋值给interface, Go自动判断其接受者类型
-type Singer interface {
+type Singer interface { // 超集
 	Humaner          // 子集
-	Sing(str string) // 超集
+	Sing(str string) 
 }
 
 type Student struct {
