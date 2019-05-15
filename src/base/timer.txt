@@ -1,0 +1,129 @@
+package main
+
+import (
+	"fmt"
+	"time"
+)
+
+func main01() {
+	t := time.NewTimer(time.Second * 2)
+	fmt.Println("now is: ", time.Now())
+
+	t1 := <-t.C // 延迟2s
+	fmt.Println("t1 = ", t1)
+}
+
+func main02() {
+	// 每隔一定时间, 发送一次
+	t := time.NewTimer(time.Second * 2)
+	fmt.Println("now is: ", time.Now())
+
+	for {
+		t1 := <-t.C
+		fmt.Println("t1 = ", t1)
+	}
+}
+
+// 定时器
+func main03() {
+	// t := time.NewTimer(time.Second * 2)
+	time.Sleep(time.Second * 2)
+	fmt.Println("时间到")
+}
+
+func main04() {
+	// t := time.NewTimer()
+	<-time.After(time.Second * 2)
+	fmt.Println("时间到")
+}
+
+func main05() {
+	t := time.NewTimer(time.Second * 2)
+	t.Reset(time.Second * 1) // 定时器的重置
+	fmt.Println("now is: ", time.Now())
+	t.Stop() // 定时器关闭
+	<-t.C
+	fmt.Println("now is: ", time.Now())
+}
+
+// Ticker 计时器
+func main06() {
+	t := time.NewTicker(time.Millisecond)
+
+	var i int
+	for {
+		<-t.C
+		i++
+		fmt.Println("i = ", i)
+
+		if i == 4 {
+			t.Stop()
+			break
+		}
+	}
+}
+
+// fibonacci ...
+func fibonacci(ch chan<- int, quit <-chan bool) {
+	x, y := 1, 1
+	for {
+		select {
+		case ch <- x:
+			x, y = y, x+y
+		case flag := <-quit:
+			fmt.Println("flag = ", flag)
+			return // 结束程序, 并关闭通道
+		}
+	}
+}
+
+func main07() {
+	ch := make(chan int)
+	quit := make(chan bool)
+
+	go func() {
+		// defer close(ch)
+		// defer close(quit)
+		for i := 0; i < 8; i++ {
+			j := <-ch
+			fmt.Println("j = ", j)
+		}
+		quit <- true
+	}()
+
+	/* channel中传入数据
+	阻塞: funcName();
+	非阻塞: go funcName() + time.Sleep()
+	*/
+	fibonacci(ch, quit)
+	// go fibonacci(ch, quit)
+	// time.Sleep(time.Second)
+}
+
+// 超时机制: select + channel
+func main() {
+	ch := make(chan int)
+	// t := time.NewTimer(time.Second)
+	quit := make(chan bool)
+
+	go func() {
+		for {
+			select {
+			case j := <-ch:
+				fmt.Println("j = ", j)
+			case <-time.After(time.Second * 2):
+				fmt.Println("延迟2s")
+				quit <- true
+			}
+		}
+	}()
+
+	go func() {
+		for i := 0; i < 5; i++ {
+			ch <- i
+			time.Sleep(time.Second * 1) // 间隔时间不能大于 time.After()的时间, 否则会出现死锁
+		}
+	}()
+	<-quit
+	fmt.Println("time end!")
+}

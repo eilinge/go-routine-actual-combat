@@ -1,0 +1,30 @@
+package main
+
+import "fmt"
+
+func fibo(quit <-chan bool, ch chan<- int) {
+	x, y := 1, 1
+	for {
+		select {
+		case ch <- x:
+			x, y = y, y+x
+		case flag := <-quit:
+			fmt.Println("flag = ", flag)
+			return
+		}
+	}
+}
+
+func main() {
+	ch := make(chan int)
+	quit := make(chan bool)
+
+	go func() {
+		for i := 0; i < 10; i++ {
+			j := <-ch
+			fmt.Println("j = ", j)
+		}
+		quit <- true
+	}()
+	fibo(quit, ch)
+}
