@@ -79,7 +79,7 @@ func HandleConn(conn net.Conn) { // 处理用户连接
 	}
 }
 
-// HandleConn -> Manager -> WriteMsgToClient
+// HandleConn -> MessageToEachClient -> WriteMsgToClient
 // 对消息进行分类处理
 // 开启协程: 1.分别处理每一个Conn; 2.进程间通过channel通信
 func main() {
