@@ -18,9 +18,9 @@ var onlineMap map[string]Client
 // 广播通讯(广播channel)
 var message = make(chan string)
 
-// Manager 转发消息, 只要有消息来了, 遍历map, 给map每个成员都发送此消息
-func Manager() {
-	// 给map分配空间
+// MessageToEachClient 转发消息, 只要有消息来了, 遍历map, 给map每个成员都发送此消息
+func MessageToEachClient() {
+	// 给map分配空间: onlineMap not nil
 	onlineMap = make(map[string]Client)
 	for {
 		msg := <-message
@@ -53,12 +53,14 @@ func HandleConn(conn net.Conn) { // 处理用户连接
 
 	// 添加新成员
 	onlineMap[cliAddr] = cli
+	
+	// send message to each client
 	go WriteMsgToClient(cli, conn)
 
 	// 广播某个在线
 	message <- MakeMsg(cli, "login")
 
-	// 接收用户发送过来的数据
+	// each client receive and send broadcast message
 	go func() {
 		buffer := make([]byte, 1024)
 
@@ -79,6 +81,7 @@ func HandleConn(conn net.Conn) { // 处理用户连接
 
 // HandleConn -> Manager -> WriteMsgToClient
 // 对消息进行分类处理
+// 开启协程: 1.分别处理每一个Conn; 2.进程间通过channel通信
 func main() {
 	listener, err := net.Listen("tcp", "127.0.0.1:8080")
 	if err != nil {
@@ -88,7 +91,7 @@ func main() {
 	defer listener.Close()
 
 	// 新开一个协程, 转发消息, 只要有消息来了, 遍历map, 给map每个成员都发送此消息
-	go Manager()
+	go MessageToEachClient()
 
 	for {
 		conn, err := listener.Accept()
