@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"net"
+	"strings"
+	"time"
 )
 
 // Client ...
@@ -53,29 +55,55 @@ func HandleConn(conn net.Conn) { // 处理用户连接
 
 	// 添加新成员
 	onlineMap[cliAddr] = cli
-	
+
 	// send message to each client
 	go WriteMsgToClient(cli, conn)
 
-	// 广播某个在线
-	message <- MakeMsg(cli, "login")
-
+	isquit := make(chan bool)
+	isData := make(chan bool)
 	// each client receive and send broadcast message
 	go func() {
 		buffer := make([]byte, 1024)
 
 		for {
 			n, err := conn.Read(buffer)
-			if n == 0 {
+			if n == 0 { // 对方断开, 或出问题
+				isquit <- true
 				fmt.Println("Conn.Read err: ", err)
 				break
 			}
 			msg := string(buffer[:n-1])
-			message <- MakeMsg(cli, msg)
+
+			if len(msg) == 3 && msg == "who" {
+				for _, tmp := range onlineMap {
+					conn.Write([]byte(tmp.Name + "\n"))
+				}
+			} else if strings.Split(msg, "|")[0] == "rename" {
+				cli.Name = strings.Split(msg, "|")[1]
+				onlineMap[cliAddr] = cli // 修改map
+				conn.Write([]byte("rename ok!\n"))
+			} else {
+				message <- MakeMsg(cli, msg)
+			}
+			isData <- true // 输入数据, 用户阻塞
 		}
 	}()
 
-	for { // 防止广播一次之后, 连接断开
+	// 广播某个在线
+	message <- MakeMsg(cli, "login")
+
+	for { // 防止广播一次之后, 连接断开 use of closed network connection
+		select {
+		case <-isquit: // 用户退出
+			delete(onlineMap, cliAddr)
+			message <- MakeMsg(cli, "logout")
+			break
+		case <-isData: // 有数据输入, 堵塞, 防止程序退出
+		case <-time.After(5 * time.Millisecond): // 延迟处理
+			delete(onlineMap, cliAddr)
+			message <- MakeMsg(cli, "time out")
+			break
+		}
 	}
 }
 
@@ -103,5 +131,4 @@ func main() {
 		defer conn.Close()
 		go HandleConn(conn)
 	}
-
 }
