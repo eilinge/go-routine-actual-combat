@@ -1,0 +1,163 @@
+package main
+
+import (
+	"fmt"
+	"net/http"
+	"os"
+	"regexp"
+	"strconv"
+	"strings"
+)
+
+// SpiderJoy ...
+func SpiderJoy(url string) (spiderURL string, err error) {
+	res, err := http.Get(url)
+	if err != nil {
+		fmt.Println("http.Get err: ", err)
+		return
+	}
+	defer res.Body.Close()
+
+	var result string
+	buffer := make([]byte, 1024)
+	for {
+		n, _ := res.Body.Read(buffer)
+		if n == 0 {
+			break
+		}
+		result += string(buffer[:n])
+	}
+
+	re := regexp.MustCompile(`<h1 class="dp-b"><a href="(?s:(.*?))" target="_blank">`)
+	joyURL := re.FindAllStringSubmatch(result, -1)
+	// fmt.Println("joyURL: ", joyURL)
+	for _, eachURL := range joyURL {
+		// fmt.Println("eachURL: ", eachURL[1])
+		spiderURL = eachURL[1]
+	}
+	return
+}
+
+// GetTitleContent title, content, err := GetTitleContent(result)
+func GetTitleContent(url string) (title, content string, err error) {
+	res, err := http.Get(url)
+	if err != nil {
+		fmt.Println("http.Get err: ", err)
+		return
+	}
+	defer res.Body.Close()
+
+	var result string
+	buffer := make([]byte, 1024)
+	for {
+		n, _ := res.Body.Read(buffer)
+		if n == 0 {
+			break
+		}
+		result += string(buffer[:n])
+	}
+	// fmt.Println("result: ", result)
+	reTitle := regexp.MustCompile(`<h1>(?s:(.*?))</h1>`)
+	reContent := regexp.MustCompile(`<div class="content-txt pt10">(?s:(.*?))<a id="prev" href=`)
+
+	Title := reTitle.FindAllStringSubmatch(result, 1)
+	Content := reContent.FindAllStringSubmatch(result, 1)
+	// // fmt.Println("joyURL: ", joyURL)
+	for _, eachTitle := range Title {
+		// fmt.Printf("eachTitle: #%+v#", eachTitle[1])
+		title = eachTitle[1]
+	}
+
+	for _, eachContent := range Content {
+		// fmt.Printf("eachContent: #%+v#", eachContent[1])
+		content = eachContent[1]
+	}
+
+	return
+}
+
+// HTTPGet ...
+// func HTTPGet(i int, n chan int) {
+func HTTPGet(i int) {
+
+	url := "https://www.pengfu.com/xiaohua_" + strconv.Itoa(i) + ".html"
+	res, err := http.Get(url)
+	// fmt.Println(url)
+	if err != nil {
+		fmt.Println("http.Get err: ", err)
+		return
+	}
+	defer res.Body.Close()
+
+	urljoy, err := SpiderJoy(url)
+	if err != nil {
+		fmt.Println("SpiderJoy err: ", err)
+		return
+	}
+
+	fmt.Println("urljoy: ", urljoy)
+	fileNum := regexp.MustCompile(`https://www.pengfu.com/content_(\d*?)_1.html`)
+	// fmt.Printf("the file num: %s \n", fileNum.FindAllStringSubmatch(urljoy, -1)[0][1])
+
+	title, content, err := GetTitleContent(urljoy)
+	if err != nil {
+		fmt.Println("GetTitleContent err: ", err)
+		return
+	}
+	// fmt.Printf("title: %s\n", strings.Replace(title, "\t", "", -1))
+	title = strings.Replace(title, "\t", "", -1)
+
+	content = strings.Replace(content, "\n", "", -1)
+	// fmt.Printf("content: %s\n", strings.Replace(content, "\t", "", -1))
+	content = strings.Replace(content, "\t", "", -1)
+
+	file, err := os.Create(fileNum.FindAllStringSubmatch(urljoy, -1)[0][1] + ".txt")
+	if err != nil {
+		fmt.Println("os.Create err: ", err)
+		return
+	}
+
+	defer file.Close()
+	n, err := file.WriteString(title + "\n" + content)
+	if n == 0 {
+		fmt.Println("file.WriteString err: ", err)
+		return
+	}
+	// n <- i
+}
+
+// Dowork ...
+func Dowork(start, end int) {
+	// fmt.Printf("start: %d, end: %d\n", start, end)
+	// var n = make(chan int)
+	for i := start; i <= end; i++ {
+		HTTPGet(i)
+	}
+	// // 堵塞, 防止程序退出
+	// for i := start; i <= end; i++ {
+	// 	<-n
+	// }
+
+}
+
+func main() {
+	fmt.Println("please input start page, this must >= 1")
+	var start, end int
+	for {
+		fmt.Scan(&start)
+		if start <= 0 {
+			fmt.Println("input start error, please input agin")
+			continue
+		}
+		fmt.Println("please input end page, this must >= start")
+		fmt.Scan(&end)
+		if end < start {
+			fmt.Println("input end error, please input agin")
+			continue
+		}
+
+		Dowork(start, end)
+		return
+	}
+
+}
